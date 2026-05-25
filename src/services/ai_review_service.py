@@ -1,4 +1,5 @@
 import json
+import re
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -6,49 +7,58 @@ from src.model.llm import get_model
 
 llm = get_model()
 
+
 def analyze_code(diff):
 
     prompt = ChatPromptTemplate.from_template("""
-    You are an expert AI code reviewer.
+You are a senior software engineer reviewing a pull request.
 
-    Analyze the following code diff.
+Analyze ONLY the changed code diff.
 
-    Detect:
+Focus ONLY on:
+1. Security vulnerabilities
+2. Performance issues
+3. Logical bugs
+4. Code maintainability concerns
 
-    1. Security vulnerabilities
-    2. Performance issues
-    3. Bugs
-    4. Code smells
+Rules:
+- Ignore formatting/style issues
+- Avoid false positives
+- Be concise
+- Report only meaningful engineering concerns
 
-    Code Diff:
-    {diff}
+Code Diff:
+{diff}
 
-    Return ONLY valid JSON.
+Return ONLY valid JSON.
 
-    Format:
+Expected JSON format:
 
+{{
+  "security": [
     {{
-      "security": [
-        {{
-          "issue": "",
-          "severity": "LOW/MEDIUM/HIGH",
-          "line": 1,
-          "explanation": "",
-          "suggestion": ""
-        }}
-      ],
-
-      "performance": [],
-
-      "bugs": [],
-
-      "code_smells": []
+      "issue": "",
+      "severity": "LOW/MEDIUM/HIGH",
+      "line": 1,
+      "explanation": "",
+      "suggestion": ""
     }}
+  ],
 
-    If no issue found use empty array.
+  "performance": [],
 
-    Return ONLY JSON.
-    """)
+  "bugs": [],
+
+  "code_smells": []
+}}
+
+If no issues exist, return empty arrays.
+
+DO NOT add explanations outside JSON.
+DO NOT use markdown.
+DO NOT write ```json.
+Return RAW JSON only.
+""")
 
     chain = prompt | llm
 
@@ -58,13 +68,25 @@ def analyze_code(diff):
 
     content = response.content.strip()
 
-    # Remove markdown if model returns ```json
-    content = content.replace("```json", "")
-    content = content.replace("```", "")
-
     try:
 
-        return json.loads(content)
+        # Extract JSON safely
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+
+        if not match:
+            raise ValueError("No JSON object found")
+
+        json_content = match.group()
+
+        parsed = json.loads(json_content)
+
+        # Ensure required keys exist
+        return {
+            "security": parsed.get("security", []),
+            "performance": parsed.get("performance", []),
+            "bugs": parsed.get("bugs", []),
+            "code_smells": parsed.get("code_smells", [])
+        }
 
     except Exception as e:
 
