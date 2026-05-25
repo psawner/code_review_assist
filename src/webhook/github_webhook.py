@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from src.services.storage_service import save_review
 
 from src.services.github_service import (
     get_pr_files,
@@ -98,6 +99,16 @@ async def github_webhook(request: Request):
     total_score = calculate_severity_score(all_issues)
 
     print("\nTOTAL RISK SCORE:", total_score)
+
+    review_data = {
+        "repository": repo_name,
+        "pr_number": pr_number,
+        "risk_score": total_score,
+        "total_issues": len(all_issues),
+        "issues": all_issues
+    }
+
+    save_review(review_data)
 
     return {
         "message": "Review completed",
